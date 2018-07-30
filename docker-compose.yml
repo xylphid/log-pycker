@@ -1,0 +1,52 @@
+version: "3.2"
+
+networks:
+  logger-net:
+  docker-net:
+    external: true
+
+services:
+  # queue:
+  #   image: rabbitmp:3.7.7-alpine
+  #   networks:
+  #     - logger-net
+
+  elastic:
+    environment:
+      discovery.type: single-node
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.3.1
+    networks:
+      - logger-net
+    restart: always
+
+  logger:
+    build: .
+    depends_on:
+      - elastic
+    environment:
+      elastic.url: http://elastic
+    links:
+      - elastic
+    networks:
+      - logger-net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  kibana:
+    depends_on:
+      - elastic
+    environment:
+      ELASTICSEARCH_URL: http://elastic:9200
+    image: docker.elastic.co/kibana/kibana:6.3.1
+    labels:
+      traefik.enable: "true"
+      traefik.backend: "Monitor"
+      traefik.docker.network: "docker-net"
+      traefik.frontend.headers.SSLRedirect: "true"
+      traefik.frontend.rule: "Host: monitor.docker"
+      traefik.port: "5601"
+    links:
+      - elastic
+    networks:
+      - docker-net
+      - logger-net
