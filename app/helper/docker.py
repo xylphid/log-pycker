@@ -61,7 +61,6 @@ class ContainerHelper(Thread):
         return logSkeleton
 
     def run(self):
-        print("%s : Start following logs" % self.container.name)
         self.logs = self.container.logs(stream=True, tail=0)
         for log in self.logs:
             try:
