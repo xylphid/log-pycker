@@ -1,8 +1,10 @@
 from elasticsearch import Elasticsearch
 from datetime import datetime
-import json
+import logging
 import os
 import time
+
+logger = logging.getLogger("logpycker")
 
 class ElasticHelper:
     conf = {
@@ -17,15 +19,13 @@ class ElasticHelper:
 
 
     def register(self, message):
-        # print( json.dumps(self.conf) )
         self.waitUntilAlive()
         if self.conf["host"] is not None:
             res = self.es.index(index=self.conf["name"], doc_type=self.conf["type"], body=message)
-            # print( "ElasticSearch result : %s" % res )
 
     def checkHosts(self):
         if self.conf["host"] is None:
-            print("%s - ERROR - ElasticSearch host is not defined" % datetime.now())
+            logger.Error("ElasticSearch host is not defined")
             return False
         else:
             return True
