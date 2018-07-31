@@ -3,9 +3,12 @@ from datetime import datetime
 from helper.elasticsearch import ElasticHelper
 from threading import Thread, RLock
 import docker
+import json
+import logging
 import re
-import traceback
 
+lock = RLock()
+logger = logging.getLogger("logpycker")
 
 class DockerHelper:
     client = docker.from_env()
@@ -23,7 +26,7 @@ class DockerHelper:
     @staticmethod
     def parse_date(message):
         date = datetime.today()
-        matches = DockerHelper.date_pattern.search(message)
+        matches = DockerHelper.date_pattern.search( message )
         if matches is not None:
             date.replace(hour=int(matches.group('hour')))\
                 .replace(minute=int(matches.group('minute')))\
@@ -60,6 +63,26 @@ class ContainerHelper(Thread):
 
         return logSkeleton
 
+
+    # https://regex101.com/
+    def parse_log_pattern(self, formattedLog):
+        labels = self.container.labels
+        if "log.pycker.pattern" in labels:
+            logger.debug( "Pattern : %s" % labels["log.pycker.pattern"] )
+            pattern = re.compile( labels["log.pycker.pattern"] )
+            matches = pattern.search( formattedLog["message"] )
+            # logger.debug( "Matches : %s" % matches is not None )
+            if matches is not None:
+                # with lock:
+                #     logger.debug( json.dumps( matches.groupdict(), ensure_ascii=False, indent=4 ) )
+                for name, value in matches.groupdict().items():
+                    formattedLog[name] = value
+                    formattedLog["message"] = pattern.sub("", formattedLog["message"])
+                logger.debug( json.dumps( formattedLog, ensure_ascii=False, indent=4 ) )
+
+        return formattedLog
+
+
     def run(self):
         self.logs = self.container.logs(stream=True, tail=0)
         for log in self.logs:
@@ -67,16 +90,13 @@ class ContainerHelper(Thread):
                 formattedLog = dict(self.skeleton)
                 formattedLog["date"] = DockerHelper.parse_date(log.decode("utf-8"))
                 formattedLog["message"] = DockerHelper.clean_date(log.decode("utf-8")).strip()
+                formattedLog = self.parse_log_pattern(formattedLog)
 
-                # TODO : Save to queue
+                # TODO : Save to queue ?
                 es = ElasticHelper()
                 es.register(formattedLog)
-                # with lock:
-                #     print( json.dumps( formattedLog, ensure_ascii=False, indent=4 ) )
             except:
-                print("Container Exception :")
-                traceback.print_exc()
-                print("=============================================")
+                logger.exception("Container Exception")
 
 
     # def stop(self):
