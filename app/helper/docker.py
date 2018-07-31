@@ -97,7 +97,3 @@ class ContainerHelper(Thread):
                 es.register(formattedLog)
             except:
                 logger.exception("Container Exception")
-
-
-    # def stop(self):
-    #     self.logs.close()
