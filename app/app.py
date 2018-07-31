@@ -12,6 +12,16 @@ import time
 
 lock = RLock()
 
+# Configure logging
+logger = logging.getLogger("logpycker")
+logger.setLevel(logging.DEBUG)
+
+# Create console handler and set formatter
+handler = logging.StreamHandler()
+handler.setFormatter( logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s") )
+
+# Add handler to logegr
+logger.addHandler( handler )
 
 class LogAggregator:
     docker = DockerHelper()
@@ -23,8 +33,6 @@ class LogAggregator:
         while LogAggregator.status == 'running':
             self.cleanThreads()
             self.browseContainers()
-            with lock:
-                print( 'Threads : %s' % len(LogAggregator.threads) )
             time.sleep(5)
 
     def browseContainers(self):
@@ -35,7 +43,8 @@ class LogAggregator:
                 pass
             elif container.name not in LogAggregator.threads:
                 with lock:
-                    print( "Attaching to : %s" % container.name )
+                    logger.info( "Attaching to : %s" % container.name )
+                    # print( "Attaching to : %s" % container.name )
                 helper = ContainerHelper(container)
                 LogAggregator.threads[container.name] = helper
                 LogAggregator.threads[container.name].start()
@@ -44,54 +53,29 @@ class LogAggregator:
         for name in LogAggregator.threads:
             if not LogAggregator.threads[name].is_alive():
                 with lock:
-                    print( "Releasing : %s" % name )
+                    logger.info( "Releasing : %s" % name )
                 LogAggregator.threads[name].logs.close()
                 LogAggregator.threads[name].join()
 
         # Reduce threads dict
         LogAggregator.threads = { name:LogAggregator.threads[name] for name in LogAggregator.threads if LogAggregator.threads[name].is_alive() }
-        with lock:
-            print( 'Threads : %s' % len(LogAggregator.threads) )
 
     @staticmethod
     def terminate():
         LogAggregator.status = 'terminated'
         for name in LogAggregator.threads:
             with lock:
-                print("- %s :" % name, end='')
                 LogAggregator.threads[name].logs.close()
                 LogAggregator.threads[name].join()
                 while (LogAggregator.threads[name].is_alive()):
-                    print( ".", end='')
-                print(" Done")
-
-
-
-
-class QueueHelper:
-    queue = {
-        'host': os.getenv("QUEUE_HOST", "queue"),
-        'name': os.getenv("pycker")
-    }
-
-    def __init__(seld):
-        self.connection = pika.BlockingConnection(pika.ConnectioParameters( self.queue.host ))
-        self.channel = connection.channel
-        self.channel.queue_declare( queue=self.queue.name )
-
-    @staticmethod
-    def save(self, message):
-        self.connection = pika.BlockingConnection(pika.ConnectioParameters( self.queue.host ))
-        self.channel = connection.channel
-        self.channel.queue_declare( queue=self.queue.name )
-        self.basic_publish(exchange='', routing_key=self.queue.name, body=message)
-        self.connection.close()
+                    time.sleep(1)
+                logger.info("- %s : Done", name)
 
 
 def main():
     # React on signal
     signal.signal(signal.SIGINT, terminate)
-    signal.signal(signal.SIGTERM, kill)
+    signal.signal(signal.SIGTERM, terminate)
 
     # Set ES logs to critical only
     logging.getLogger("elasticsearch").setLevel(logging.CRITICAL)
@@ -99,15 +83,12 @@ def main():
     watcher = LogAggregator()
 
 def terminate(signal, frame):
-    try:
-        print( "\nGracefully stopping threads : ")
-        LogAggregator.terminate()
-        sys.exit(0)
-    except:
-        pass
+    logging.info( "Gracefully stopping threads : ")
+    LogAggregator.terminate()
+    kill(signal, frame)
 
 def kill(signal, frame):
-    print( "Program terminated !")
+    logging.info( "Program terminated !")
     sys.exit(0)
 
 if __name__ == "__main__":
