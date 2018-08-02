@@ -8,7 +8,7 @@ Log Pycker is a docker log aggregator which can be deployed on local machine as 
 
 ## Supported tags
 
-- `1`, `1-alpine`, `latest`
+- `1`, `1-python3.7`, `1-alpine`, `1.0.0`, `1.0.0-alpine`, `1.0.0-alpine-python3.7`, `latest`
 
 ## Environments
 
@@ -92,8 +92,7 @@ docker service create \
 
 This pattern will match any log level in INFO, DEBUG and ERROR in brackets or not.
 - `INFO` will match and `INFO` will be captured
-- `[INFO]` will match and `INFO` will be captured
-- `[INFO]    ` will match and `INFO` will be captured
+- `[INFO]` will match and `INFO` will be captured (extra space will be removed)
 
 ## Persistent data
 
