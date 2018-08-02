@@ -6,11 +6,6 @@ networks:
     external: true
 
 services:
-  # queue:
-  #   image: rabbitmp:3.7.7-alpine
-  #   networks:
-  #     - logger-net
-
   elastic:
     environment:
       discovery.type: single-node
@@ -25,6 +20,7 @@ services:
       - elastic
     environment:
       elastic.url: http://elastic
+      tags.ignore: pycker
     links:
       - elastic
     networks:
