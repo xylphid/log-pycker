@@ -14,17 +14,23 @@ class DockerHelper:
     client = docker.from_env()
     date_pattern = re.compile('^\[?(\d{4}[-/]\d{2}[-/]\d{2})?T?\s*((?P<hour>\d{2}):(?P<minute>\d{2}):(?P<second>\d{2})(?:[,.]+(?P<microsecond>\d{3}(?:\d{3})?))?)(\s*\+\d{4})?Z?\]?\s*')
 
-    def __init__(self, client=docker.from_env()):
-        self.client = client
 
     # Return container list
     @staticmethod
-    def get_containers():
-        return DockerHelper.client.containers.list()
+    def getContainers():
+        try:
+            return DockerHelper.client.containers.list()
+        except docker.errors.APIError:
+            return []
+
+    @staticmethod
+    def hasDate(message):
+        matches = DockerHelper.date_pattern.search( message )
+        return False if matches is None else True
 
     # Extract date from message
     @staticmethod
-    def parse_date(message):
+    def parseDate(message):
         date = datetime.today()
         matches = DockerHelper.date_pattern.search( message )
         if matches is not None:
@@ -38,62 +44,111 @@ class DockerHelper:
 
     # Delete date from message
     @staticmethod
-    def clean_date(message):
+    def cleanDate(message):
         return DockerHelper.date_pattern.sub("", message)
 
 
 class ContainerHelper(Thread):
     def __init__(self, container, client=docker.from_env()):
-        # DockerHelper.__init__(self, client)
         Thread.__init__(self)
         self.client = client
         self.container = container
-        self.skeleton = self.build_sekeleton() 
+        self.previousLog = None
+        self.logs = []
+        self.skeleton = self.buildSkeleton()
 
-    def build_sekeleton(self):
+    def isMultilineEnabled(self):
+        self.container.reload()
+        self.labels = self.container.labels
+        if "log.pycker.multiline.enabled" in self.labels:
+            return json.loads( self.labels["log.pycker.multiline.enabled"] )
+        else:
+            return False
+
+    def buildSkeleton(self):
         logSkeleton = {}
-        labels = self.container.labels
-        # print( json.dumps( labels, ensure_ascii=False, indent=4 ) )
-        if "com.docker.compose.project" in labels: 
-            logSkeleton["project"] = labels["com.docker.compose.project"]
-        if "com.docker.compose.service" in labels: 
-            logSkeleton["service"] = labels["com.docker.compose.service"]
-        if "com.docker.compose.container-number" in labels: 
-            logSkeleton["number"] = labels["com.docker.compose.container-number"]
+        self.labels = self.container.labels
+
+        # Identify networks
+        logSkeleton["networks"] = [ network for network in self.container.attrs["NetworkSettings"]["Networks"] ]
+
+        # Identify compose services
+        # logger.debug( json.dumps( self.container.attrs, ensure_ascii=False, indent=4 ) )
+        if "com.docker.compose.project" in self.labels: 
+            logSkeleton["project"] = self.labels["com.docker.compose.project"]
+        if "com.docker.compose.service" in self.labels: 
+            logSkeleton["service"] = self.labels["com.docker.compose.service"]
+        if "com.docker.compose.container-number" in self.labels: 
+            logSkeleton["task"] = self.labels["com.docker.compose.container-number"]
+
+        # Identify stack services
+        if "com.docker.swarm.service.name" in self.labels:
+            logSkeleton["service"] = self.labels["com.docker.swarm.service.name"]
+        if "com.docker.stack.namespace" in self.labels:
+            logSkeleton["project"] = self.labels["com.docker.stack.namespace"]
+            logSkeleton["service"] = logSkeleton["service"].replace(logSkeleton["project"] + "_", "")
+        if "com.docker.swarm.task.id" in self.labels:
+            logSkeleton["task"] = self.labels["com.docker.swarm.task.id"]
 
         return logSkeleton
 
 
     # https://regex101.com/
-    def parse_log_pattern(self, formattedLog):
-        labels = self.container.labels
-        if "log.pycker.pattern" in labels:
-            logger.debug( "Pattern : %s" % labels["log.pycker.pattern"] )
-            pattern = re.compile( labels["log.pycker.pattern"] )
-            matches = pattern.search( formattedLog["message"] )
-            # logger.debug( "Matches : %s" % matches is not None )
-            if matches is not None:
-                # with lock:
-                #     logger.debug( json.dumps( matches.groupdict(), ensure_ascii=False, indent=4 ) )
-                for name, value in matches.groupdict().items():
-                    formattedLog[name] = value
-                    formattedLog["message"] = pattern.sub("", formattedLog["message"])
-                logger.debug( json.dumps( formattedLog, ensure_ascii=False, indent=4 ) )
+    def parseLogPattern(self, formattedLog):
+        if "log.pycker.pattern" in self.labels:
+            try:
+                pattern = re.compile( self.labels["log.pycker.pattern"] )
+                matches = pattern.search( formattedLog["message"] )
+                if matches is not None:
+                    for name, value in matches.groupdict().items():
+                        formattedLog[name] = value
+                        formattedLog["message"] = pattern.sub("", formattedLog["message"])
+                    # logger.debug( json.dumps( formattedLog, ensure_ascii=False, indent=4 ) )
+            except:
+                logger.exception( "Error using log pattern : %s" % self.labels["log.pycker.pattern"] )
 
         return formattedLog
 
+    def parseMultilineLog(self, message):
+        if not DockerHelper.hasDate(message) and self.previousLog is not None:
+            formattedLog = self.previousLog["entry"]
+            formattedLog["message"] += message
+            if not ElasticHelper().delete( self.previousLog["id"] ):
+                raise
+            return formattedLog
+        else:
+            return self.parseLog(message)
+
+    def parseLog(self, message):
+        formattedLog = dict(self.skeleton)
+        formattedLog["date"] = DockerHelper.parseDate(message)
+        formattedLog["message"] = DockerHelper.cleanDate(message)
+        formattedLog = self.parseLogPattern(formattedLog)
+
+        return formattedLog
 
     def run(self):
-        self.logs = self.container.logs(stream=True, tail=0)
+        try:
+            self.logs = self.container.logs(stream=True, tail=0)
+        except:
+            logger.error( "Unable to get logs for %s" % self.container.name )
+            
         for log in self.logs:
             try:
-                formattedLog = dict(self.skeleton)
-                formattedLog["date"] = DockerHelper.parse_date(log.decode("utf-8"))
-                formattedLog["message"] = DockerHelper.clean_date(log.decode("utf-8")).strip()
-                formattedLog = self.parse_log_pattern(formattedLog)
+                es = ElasticHelper()
+                message = log.decode("utf-8")
+                labels = self.container.labels
+                if self.isMultilineEnabled():
+                    formattedLog = self.parseMultilineLog( message )
+                else:
+                    formattedLog = self.parseLog( message )
 
                 # TODO : Save to queue ?
-                es = ElasticHelper()
-                es.register(formattedLog)
+                result = es.register(formattedLog)
+                if result is not None and result["result"] == "created":
+                    self.previousLog = {
+                        "id": result["_id"],
+                        "entry": formattedLog
+                    }
             except:
                 logger.exception("Container Exception")
