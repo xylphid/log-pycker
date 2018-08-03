@@ -8,7 +8,7 @@ Log Pycker is a docker log aggregator which can be deployed on local machine as 
 
 ## Supported tags
 
-- `1`, `1-python3.7`, `1-alpine`, `1.0.0`, `1.0.0-alpine`, `1.0.0-alpine-python3.7`, `latest`
+- `1`, `1-python3.7`, `1-slim`, `1.0.0`, `1.0.0-slim`, `1.0.0-slim-python3.7`, `latest`
 
 ## Environments
 
@@ -16,12 +16,24 @@ Here are supported environments variable and its definition :
 - `elastic.url` : URL of Elastic Search
 - `tags.ignore` : Coma separated list of image tags to be ignored
 
+## Availables container labels
+
+* `log.pycker.pattern` : Parse message using the defined pattern. Match groups will be extracted and message cleaned. (ex : `(?P<level>(?:[[])?(?:INFO|DEBUG|ERROR)(?:[]])?)\s*` will extact INFO, DEBUG or ERROR from any message)
+* `log.pycker.multiline.enabled` : Detect multiline message using datetime as delimiter
+
+**Caution :** Those are container labels. In swarm, you must use the `--container-label` option to declare them using command line or the `labels` section (not `deploy/labels`) in compose files.
+
+## Persistent data
+
+Persistence is managed on Elastic Search service.
+Please refer to its [documentation](https://www.elastic.co/guide/en/elasticsearch/reference/6.3/docker.html)
+
 ## How to use this image
 
 This image require an Elastic Search to save logs.
 You can use the following compose :
 
-```
+```yml
 version: "3.2"
 
 networks:
@@ -39,11 +51,11 @@ services:
     restart: always
 
   logger:
-    build: .
     depends_on:
       - elastic
     environment:
       elastic.url: http://elastic
+    image: xylphid/log-pycker:latest
     links:
       - elastic
     networks:
@@ -70,34 +82,6 @@ services:
       - docker-net
       - logger-net
 ```
-
-## Set log pattern
-
-You can define a log pattern for any of your running services. This pattern will be processed on each log entry caught by the daemon.\
-To do so, add the `log.pycker.pattern` label with a python regex as followed :
-```
-docker run -d \
-  --name my-awesome-project \
-  --label "log.pycker.pattern=(?P<level>(?:[[])?(?:INFO|DEBUG|ERROR)(?:[]])?)\s*"
-  nginx
-```
-
-Be carefull when using swarm service. You must declare a container label otherwise your pattern won't be spread to any of your tasks.
-```
-docker service create \
-  --name my-awesome-project \
-  --container-label "log.pycker.pattern=(?P<level>(?:[[])?(?:INFO|DEBUG|ERROR)(?:[]])?)\s*"
-  nginx
-```
-
-This pattern will match any log level in INFO, DEBUG and ERROR in brackets or not.
-- `INFO` will match and `INFO` will be captured
-- `[INFO]` will match and `INFO` will be captured (extra space will be removed)
-
-## Persistent data
-
-Persistence is managed on Elastic Search service.
-Please refer to its [documentation](https://www.elastic.co/guide/en/elasticsearch/reference/6.3/docker.html)
 
 ## Image inheritance
 

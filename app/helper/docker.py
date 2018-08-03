@@ -103,7 +103,6 @@ class ContainerHelper(Thread):
                     for name, value in matches.groupdict().items():
                         formattedLog[name] = value
                         formattedLog["message"] = pattern.sub("", formattedLog["message"])
-                    # logger.debug( json.dumps( formattedLog, ensure_ascii=False, indent=4 ) )
             except:
                 logger.exception( "Error using log pattern : %s" % self.labels["log.pycker.pattern"] )
 
