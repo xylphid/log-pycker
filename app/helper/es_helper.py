@@ -4,8 +4,6 @@ import logging
 import os
 import time
 
-logger = logging.getLogger("logpycker")
-
 class Singleton(object):
     _instances = {}
 
@@ -33,6 +31,9 @@ class ElasticHelper(Singleton):
     es = None
 
     def __init__(self):
+        # Set ES logs to critical only
+        logging.getLogger("elasticsearch").setLevel(logging.CRITICAL)
+        self.logger = logging.getLogger("logpycker")
         self.checkHosts()
 
 
@@ -42,7 +43,7 @@ class ElasticHelper(Singleton):
             try:
                 return self.es.index(index=self.conf["name"], doc_type=self.conf["type"], body=message)
             except:
-                logger.exception( "Unable to index the following log :\n%s" % message )
+                self.logger.exception( "Unable to index the following log :\n%s" % message )
                 return None
         else:
             return None
@@ -54,13 +55,13 @@ class ElasticHelper(Singleton):
                 res = self.es.delete(index=self.conf["name"], doc_type=self.conf["type"], id=id)
                 return True
             except:
-                logger.exception( "Unable to delete the following index : %s" % id )
+                self.logger.exception( "Unable to delete the following index : %s" % id )
                 return False
 
 
     def checkHosts(self):
         if self.conf["host"] is None:
-            logger.error("ElasticSearch host is not defined")
+            self.logger.error("ElasticSearch host is not defined")
             return False
         else:
             return True
@@ -77,7 +78,7 @@ class ElasticHelper(Singleton):
                     if not alive:
                         raise
                 except:
-                    logger.info("Could not reach Elastic Searh. Will retry in 5 seconds ...")
+                    self.logger.info("Could not reach Elastic Searh. Will retry in 5 seconds ...")
                     time.sleep(5)
 
             return True
