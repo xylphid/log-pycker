@@ -83,6 +83,21 @@ services:
       - logger-net
 ```
 
+Use the image from Docker Hub :
+```bash
+$ docker-compose up -d
+```
+
+Re-build the log-pycker image :
+```
+docker-compose up --build -d
+```
+
+## Reporting bugs and contributing
+
+- Want to report a bug or request a feature ? Please open [an issue](https://github.com/xylphid/log-pycker/issues/new)
+- Want to contribute ? Please refer to the [contributing guidelines](contributing.md) to run the project locally and make a pull request.
+
 ## Image inheritance
 
 This docker image inherits from [python:3.7-slim](https://hub.docker.com/_/python/) image.
