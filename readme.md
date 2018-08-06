@@ -51,6 +51,7 @@ services:
     restart: always
 
   logger:
+    build: .
     depends_on:
       - elastic
     environment:
