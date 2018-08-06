@@ -13,13 +13,11 @@ import types
 
 class LogPycker:
     threads = {}
-    status = "running"
 
     def __init__(self):
         self.__init_signals__()
         self.set_loggers()
         self.docker = docker.from_env()
-
 
     def __init_signals__(self):
         # React on signal
@@ -40,7 +38,8 @@ class LogPycker:
         self.logger.addHandler( handler )
 
     def run(self):
-        while LogPycker.status == 'running':
+        self.status = "running"
+        while self.status == 'running':
             self.clean_threads()
             self.browse_containers()
             time.sleep(5)
@@ -82,7 +81,7 @@ class LogPycker:
         self.status = 'terminated'
         self.logger.info( "Gracefully stopping threads : ")
         for name in self.threads:
-            if isinstance(self.threads[name].logs, types.GeneratorType):
+            if isinstance(self.threads[name].logs, docker.types.daemon.CancellableStream):
                 self.threads[name].logs.close()
             self.threads[name].join()
             while (self.threads[name].is_alive()):
