@@ -1,7 +1,7 @@
 #!/usr/local/bin/python
 
-from helper.docker import DockerHelper, ContainerHelper
-from helper.elasticsearch import ElasticHelper
+from helper.docker_helper import ContainerHelper
+import docker
 import logging
 import os
 import re
@@ -11,30 +11,41 @@ import time
 import types
 
 
-# Configure logging
-logger = logging.getLogger("logpycker")
-logger.setLevel(logging.DEBUG)
-
-# Create console handler and set formatter
-handler = logging.StreamHandler()
-handler.setFormatter( logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s") )
-
-# Add handler to logegr
-logger.addHandler( handler )
-
 class LogPycker:
-    docker = DockerHelper()
-    # excludes = ['pyckerlogs_logger:latest', 'xylphid/log-pycker:latest', 'docker.elastic.co/elasticsearch/elasticsearch:6.3.1']
     threads = {}
     status = "running"
 
     def __init__(self):
+        self.__init_signals__()
+        self.set_loggers()
+        self.docker = docker.from_env()
+
+
+    def __init_signals__(self):
+        # React on signal
+        signal.signal(signal.SIGINT, self.terminate)
+        signal.signal(signal.SIGTERM, self.terminate)
+
+    def set_loggers(self):
+        # Set ES logs to critical only
+        logging.getLogger("elasticsearch").setLevel(logging.CRITICAL)
+
+        # Configure logging
+        self.logger = logging.getLogger("logpycker")
+        self.logger.setLevel(logging.DEBUG)
+        # Create console handler and set formatter
+        handler = logging.StreamHandler()
+        handler.setFormatter( logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s") )
+        # Add handler to logegr
+        self.logger.addHandler( handler )
+
+    def run(self):
         while LogPycker.status == 'running':
-            self.cleanThreads()
-            self.browseContainers()
+            self.clean_threads()
+            self.browse_containers()
             time.sleep(5)
 
-    def isIgnored(self, container):
+    def is_ignored(self, container):
         filters = os.getenv("tags.ignore", None)
         try:
             filters = filters.split(",")
@@ -46,57 +57,49 @@ class LogPycker:
         finally:
             return False
 
-    def browseContainers(self):
-        for container in DockerHelper.getContainers():
-            if self.isIgnored(container):
+    def browse_containers(self):
+        for container in self.docker.containers.list():
+            if self.is_ignored(container):
                 pass
-            elif container.name not in LogPycker.threads:
-                logger.info( "Attaching to : %s" % container.name )
+            elif container.name not in self.threads:
+                self.logger.info( "Attaching to : %s" % container.name )
                 helper = ContainerHelper(container)
-                LogPycker.threads[container.name] = helper
-                LogPycker.threads[container.name].start()
+                self.threads[container.name] = helper
+                self.threads[container.name].start()
 
-    def cleanThreads(self):
-        for name in LogPycker.threads:
-            if not LogPycker.threads[name].is_alive():
-                logger.info( "Releasing : %s" % name )
-                if isinstance(LogPycker.threads[name].logs, types.GeneratorType):
-                    LogPycker.threads[name].logs.close()
-                LogPycker.threads[name].join()
+    def clean_threads(self):
+        for name in self.threads:
+            if not self.threads[name].is_alive():
+                self.logger.info( "Releasing : %s" % name )
+                if isinstance(self.threads[name].logs, types.GeneratorType):
+                    self.threads[name].logs.close()
+                self.threads[name].join()
 
         # Reduce threads dict
-        LogPycker.threads = { name:LogPycker.threads[name] for name in LogPycker.threads if LogPycker.threads[name].is_alive() }
+        self.threads = { name:self.threads[name] for name in self.threads if self.threads[name].is_alive() }
 
-    @staticmethod
-    def terminate():
-        LogPycker.status = 'terminated'
-        for name in LogPycker.threads:
-            if isinstance(LogPycker.threads[name].logs, types.GeneratorType):
-                LogPycker.threads[name].logs.close()
-            LogPycker.threads[name].join()
-            while (LogPycker.threads[name].is_alive()):
+    def terminate(self, signal, frame):
+        self.status = 'terminated'
+        self.logger.info( "Gracefully stopping threads : ")
+        for name in self.threads:
+            if isinstance(self.threads[name].logs, types.GeneratorType):
+                self.threads[name].logs.close()
+            self.threads[name].join()
+            while (self.threads[name].is_alive()):
                 time.sleep(1)
-            logger.info("  %s : Done " % name)
+            self.logger.info("  %s : Done " % name)
+
+        self.kill(signal, frame)
+
+    def kill(self, signal, frame):
+        self.logger.info( "Program terminated !")
+        sys.exit(0)
 
 
 def main():
-    # React on signal
-    signal.signal(signal.SIGINT, terminate)
-    signal.signal(signal.SIGTERM, terminate)
-
-    # Set ES logs to critical only
-    logging.getLogger("elasticsearch").setLevel(logging.CRITICAL)
-    # Start aggregator
     watcher = LogPycker()
-
-def terminate(signal, frame):
-    logger.info( "Gracefully stopping threads : ")
-    LogPycker.terminate()
-    kill(signal, frame)
-
-def kill(signal, frame):
-    logger.info( "Program terminated !")
-    sys.exit(0)
+    # Start Pycker
+    watcher.run()
 
 if __name__ == "__main__":
     main()
