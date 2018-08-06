@@ -1,7 +1,7 @@
 version: "3.2"
 
 networks:
-  logger-net:
+  pycker-net:
   docker-net:
     external: true
 
@@ -11,20 +11,21 @@ services:
       discovery.type: single-node
     image: docker.elastic.co/elasticsearch/elasticsearch:6.3.1
     networks:
-      - logger-net
+      - pycker-net
     restart: always
 
-  logger:
+  pycker:
     build: .
     depends_on:
       - elastic
     environment:
       elastic.url: http://elastic
       tags.ignore: pycker
+    image: xylphid/log-pycker:latest
     links:
       - elastic
     networks:
-      - logger-net
+      - pycker-net
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
@@ -45,4 +46,4 @@ services:
       - elastic
     networks:
       - docker-net
-      - logger-net
+      - pycker-net
