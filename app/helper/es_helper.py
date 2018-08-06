@@ -34,12 +34,12 @@ class ElasticHelper(Singleton):
         # Set ES logs to critical only
         logging.getLogger("elasticsearch").setLevel(logging.CRITICAL)
         self.logger = logging.getLogger("logpycker")
-        self.checkHosts()
+        self.check_hosts()
 
 
     def register(self, message):
-        self.waitUntilAlive()
-        if self.checkHosts():
+        self.wait_until_alive()
+        if self.check_hosts():
             try:
                 return self.es.index(index=self.conf["name"], doc_type=self.conf["type"], body=message)
             except:
@@ -49,8 +49,8 @@ class ElasticHelper(Singleton):
             return None
 
     def delete(self, id):
-        self.waitUntilAlive()
-        if self.checkHosts():
+        self.wait_until_alive()
+        if self.check_hosts():
             try:
                 res = self.es.delete(index=self.conf["name"], doc_type=self.conf["type"], id=id)
                 return True
@@ -59,15 +59,15 @@ class ElasticHelper(Singleton):
                 return False
 
 
-    def checkHosts(self):
+    def check_hosts(self):
         if self.conf["host"] is None:
             self.logger.error("ElasticSearch host is not defined")
             return False
         else:
             return True
 
-    def waitUntilAlive(self):
-        if not self.checkHosts():
+    def wait_until_alive(self):
+        if not self.check_hosts():
             return False
         else:
             alive = False
