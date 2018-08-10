@@ -25,7 +25,7 @@ class Singleton(object):
 class ElasticHelper(Singleton):
     conf = {
         "host": os.getenv("elastic.url", None),
-        "name": "pycker-" + datetime.now().strftime("%Y-%m-%d"),
+        "prefix": "pycker-",
         "type": "docker-log"
     }
     es = None
@@ -41,12 +41,15 @@ class ElasticHelper(Singleton):
         self.wait_until_alive()
         if self.check_hosts():
             try:
-                return self.es.index(index=self.conf["name"], doc_type=self.conf["type"], body=message)
+                return self.es.index(index=self.get_index(), doc_type=self.conf["type"], body=message)
             except:
                 self.logger.exception( "Unable to index the following log :\n%s" % message )
                 return None
         else:
             return None
+
+    def get_index(self):
+        return self.conf["prefix"] + datetime.now().strftime("%Y-%m-%d")
 
     def delete(self, id):
         self.wait_until_alive()
